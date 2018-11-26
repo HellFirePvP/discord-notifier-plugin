@@ -1,0 +1,270 @@
+package nz.co.jammehcow.jenkinsdiscord;
+
+import hudson.EnvVars;
+import hudson.Extension;
+import hudson.model.AbstractBuild;
+import hudson.model.Result;
+import hudson.model.Run;
+import hudson.model.TaskListener;
+import hudson.scm.ChangeLogSet;
+import jenkins.model.JenkinsLocationConfiguration;
+import nz.co.jammehcow.jenkinsdiscord.exception.WebhookException;
+import nz.co.jammehcow.jenkinsdiscord.util.EmbedDescription;
+import org.jenkinsci.plugins.workflow.steps.AbstractStepDescriptorImpl;
+import org.jenkinsci.plugins.workflow.steps.AbstractStepImpl;
+import org.jenkinsci.plugins.workflow.steps.AbstractSynchronousNonBlockingStepExecution;
+import org.jenkinsci.plugins.workflow.steps.StepContextParameter;
+import org.kohsuke.stapler.DataBoundConstructor;
+import org.kohsuke.stapler.DataBoundSetter;
+import org.kohsuke.stapler.Function;
+
+import javax.annotation.Nonnull;
+import javax.inject.Inject;
+
+import java.lang.reflect.Method;
+import java.util.List;
+
+import static nz.co.jammehcow.jenkinsdiscord.DiscordWebhook.DESCRIPTION_LIMIT;
+import static nz.co.jammehcow.jenkinsdiscord.DiscordWebhook.FOOTER_LIMIT;
+import static nz.co.jammehcow.jenkinsdiscord.DiscordWebhook.TITLE_LIMIT;
+
+public class PreConfiguredDiscordPipelineStep extends AbstractStepImpl {
+
+    private final String webhookURL;
+
+    private String title;
+    private String link;
+    private String description;
+    private String footer;
+    private String image;
+    private String thumbnail;
+    private String result;
+    private boolean successful;
+    private boolean unstable;
+
+    @DataBoundConstructor
+    public PreConfiguredDiscordPipelineStep(String webhookURL) {
+        this.webhookURL = webhookURL;
+    }
+
+    public String getWebhookURL() {
+        return webhookURL;
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    @DataBoundSetter
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    public String getLink() {
+        return link;
+    }
+
+    @DataBoundSetter
+    public void setLink(String link) {
+        this.link = link;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    @DataBoundSetter
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public String getFooter() {
+        return footer;
+    }
+
+    @DataBoundSetter
+    public void setFooter(String footer) {
+        this.footer = footer;
+    }
+
+    public boolean isSuccessful() {
+        return successful;
+    }
+
+    @DataBoundSetter
+    public void setSuccessful(boolean successful) {
+        this.successful = successful;
+    }
+
+    public boolean isUnstable() {
+        return unstable;
+    }
+
+    @DataBoundSetter
+    public void setUnstable(boolean unstable) {
+        this.unstable = unstable;
+    }
+
+    @DataBoundSetter
+    public void setImage(String url) {
+        this.image = url;
+    }
+
+    public String getImage() {
+        return image;
+    }
+
+    @DataBoundSetter
+    public void setThumbnail(String url) {
+        this.thumbnail = url;
+    }
+
+    public String getThumbnail() {
+        return thumbnail;
+    }
+
+    @DataBoundSetter
+    public void setResult(String result) {
+        this.result = result;
+    }
+
+    public String getResult() {
+        return result;
+    }
+
+    public static class PreConfiguredDiscordPipelineStepExecution extends AbstractSynchronousNonBlockingStepExecution<Void> {
+
+        @Inject
+        transient PreConfiguredDiscordPipelineStep step;
+
+        @StepContextParameter
+        private transient TaskListener listener;
+
+        @Override
+        protected Void run() throws Exception {
+            JenkinsLocationConfiguration cfg = JenkinsLocationConfiguration.get();
+            if (cfg == null) {
+                listener.getLogger().println("[HellFire Discord Notifier] JenkinsLocationConfiguration is null!");
+                return null;
+            }
+
+            EnvVars vars = getContext().get(EnvVars.class);
+            if (vars == null) {
+                listener.getLogger().println("[HellFire Discord Notifier] EnvVars is null!");
+                return null;
+            }
+
+            Run<?, ?> run = getContext().get(Run.class);
+            if (run == null) {
+                listener.getLogger().println("[HellFire Discord Notifier] CurrentBuild not found!");
+                return null;
+            }
+            java.util.function.Function<Run<?, ?>, Object[]> getChanges;
+            if (run instanceof AbstractBuild) {
+                getChanges = run1 -> ((AbstractBuild) run1).getChangeSet().getItems();
+            } else {
+                getChanges = run12 -> {
+                    try {
+                        //WorkflowRun
+                        Method m = run12.getClass().getDeclaredMethod("getChangeSets");
+                        List<ChangeLogSet<? extends ChangeLogSet.Entry>> changes =
+                                (List<ChangeLogSet<? extends ChangeLogSet.Entry>>) m.invoke(run12);
+                        if (changes.isEmpty()) {
+                            return new Object[0];
+                        }
+                        int size = 0;
+                        for (ChangeLogSet<?> changeSet : changes) {
+                            size += changeSet.getItems().length;
+                        }
+                        int offset = 0;
+                        Object[] out = new Object[size];
+                        for (ChangeLogSet<?> changeSet : changes) {
+                            Object[] copy = changeSet.getItems();
+                            System.arraycopy(copy, 0, out, offset, copy.length);
+                            offset += copy.length;
+                        }
+                        return out;
+                    } catch (Exception exc) {
+                        return new Object[0];
+                    }
+                };
+            }
+
+            DiscordWebhook.StatusColor statusColor;
+            statusColor = DiscordWebhook.StatusColor.YELLOW;
+            if (step.getResult() == null) {
+                if (step.isSuccessful()) statusColor = DiscordWebhook.StatusColor.GREEN;
+                if (step.isSuccessful() && step.isUnstable()) statusColor = DiscordWebhook.StatusColor.YELLOW;
+                if (!step.isSuccessful() && !step.isUnstable()) statusColor = DiscordWebhook.StatusColor.RED;
+            } else if (step.getResult().equals(Result.SUCCESS.toString())) {
+                statusColor = DiscordWebhook.StatusColor.GREEN;
+            } else if (step.getResult().equals(Result.UNSTABLE.toString())) {
+                statusColor = DiscordWebhook.StatusColor.YELLOW;
+            } else if (step.getResult().equals(Result.FAILURE.toString())) {
+                statusColor = DiscordWebhook.StatusColor.RED;
+            } else if (step.getResult().equals(Result.ABORTED.toString())) {
+                statusColor = DiscordWebhook.StatusColor.GREY;
+            } else {
+                listener.getLogger().println(step.getResult() + " is not a valid result");
+            }
+
+            DiscordWebhook wh = new DiscordWebhook(step.getWebhookURL());
+            wh.setURL(step.getLink());
+            wh.setThumbnail(step.getThumbnail());
+            wh.setImage(step.getImage());
+            wh.setFooter(checkLimitAndTruncate("footer", step.getFooter(), FOOTER_LIMIT));
+            wh.setStatus(statusColor);
+
+            wh.setTitle(run.getFullDisplayName());
+
+            String descriptionPrefix = ""
+                    + "**Build:** "
+                    + run.getId()
+                    + "\n**Status:** "
+                    + step.getResult().toLowerCase() + "\n";
+
+            wh.setDescription(new EmbedDescription(run, cfg, descriptionPrefix, true, getChanges).toString());
+
+            try {
+                listener.getLogger().println("Sending notification to Discord.");
+                wh.send();
+            } catch (WebhookException e) {
+                e.printStackTrace(listener.getLogger());
+            }
+
+            return null;
+        }
+
+        private String checkLimitAndTruncate(String fieldName, String value, int limit) {
+            if (value == null) return "";
+            if (value.length() > limit) {
+                listener.getLogger().printf("Warning: '%s' field has more than %d characters (%d). It will be truncated.%n",
+                        fieldName,
+                        limit,
+                        value.length());
+                return value.substring(0, limit);
+            }
+            return value;
+        }
+
+        private static final long serialVersionUID = 1L;
+    }
+
+    @Extension
+    public static class DescriptorImpl extends AbstractStepDescriptorImpl {
+
+        public DescriptorImpl() { super(PreConfiguredDiscordPipelineStepExecution.class); }
+
+        @Override
+        public String getFunctionName() {
+            return "discordSendHellFire";
+        }
+
+        @Nonnull
+        @Override
+        public String getDisplayName() {
+            return "Send an embed message to Webhook URL";
+        }
+    }
+
+}

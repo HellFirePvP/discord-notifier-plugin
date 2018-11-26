@@ -7,6 +7,7 @@ import jenkins.model.JenkinsLocationConfiguration;
 
 import java.util.LinkedList;
 import java.util.List;
+import java.util.function.Function;
 
 /**
  * @author jammehcow
@@ -20,12 +21,17 @@ public class EmbedDescription {
     private String prefix;
     private String finalDescription;
 
-    public EmbedDescription(AbstractBuild build, JenkinsLocationConfiguration globalConfig, String prefix, boolean enableArtifactsList) {
+    public EmbedDescription(AbstractBuild<?, ?> build, JenkinsLocationConfiguration globalConfig, String prefix, boolean enableArtifactsList) {
+        this(build, globalConfig, prefix, enableArtifactsList, (b) -> ((AbstractBuild) b).getChangeSet().getItems());
+    }
+
+    public EmbedDescription(Run<?, ?> build, JenkinsLocationConfiguration globalConfig, String prefix, boolean enableArtifactsList, Function<Run<?, ?>, Object[]> getChanges) {
         String artifactsURL = globalConfig.getUrl() + build.getUrl() + "artifact/";
         this.prefix = prefix;
         this.changesList.add("\n**Changes:**\n");
         if (enableArtifactsList) this.artifactsList.add("\n**Artifacts:**\n");
-        Object[] changes = build.getChangeSet().getItems();
+
+        Object[] changes = getChanges.apply(build);
 
         if (changes.length == 0) {
             this.changesList.add("\n*No changes.*\n");
@@ -40,7 +46,7 @@ public class EmbedDescription {
 
         if (enableArtifactsList) {
             //noinspection unchecked
-            List<Run.Artifact> artifacts = build.getArtifacts();
+            List<? extends Run.Artifact> artifacts = build.getArtifacts();
             if (artifacts.size() == 0) {
                 this.artifactsList.add("\n*No artifacts saved.*");
             } else {

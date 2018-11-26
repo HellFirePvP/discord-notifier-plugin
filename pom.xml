@@ -9,10 +9,10 @@
     <relativePath />
   </parent>
 
-  <name>Discord Notifier</name>
+  <name>[Custom-HellFire] Discord Notifier</name>
   <description>Discord Notifier allows you to send Discord embeds about your builds via Discord's webhooks.
   </description>
-  <url>https://github.com/jenkinsci/discord-notifier-plugin/blob/master/README.md</url>
+  <url>https://github.com/HellFirePvP/discord-notifier-plugin/blob/master/README.md</url>
 
   <groupId>nz.co.jammehcow</groupId>
   <artifactId>discord-notifier</artifactId>
@@ -26,9 +26,9 @@
   </properties>
 
   <scm>
-    <connection>scm:git:git://github.com/jenkinsci/discord-notifier-plugin.git</connection>
-    <developerConnection>scm:git:git@github.com:jenkinsci/discord-notifier-plugin.git</developerConnection>
-    <url>https://github.com/jenkinsci/discord-notifier-plugin</url>
+    <connection>scm:git:git://github.com/HellFirePvP/discord-notifier-plugin.git</connection>
+    <developerConnection>scm:git:git@github.com:HellFirePvP/discord-notifier-plugin.git</developerConnection>
+    <url>https://github.com/HellFirePvP/discord-notifier-plugin</url>
     <tag>HEAD</tag>
   </scm>
 
